@@ -1,3 +1,5 @@
+//! Implements logic for the Rusty Duke game.
+
 use std::collections::HashMap;
 use std::fmt;
 pub use strum::IntoEnumIterator;

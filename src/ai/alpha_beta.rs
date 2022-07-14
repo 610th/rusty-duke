@@ -1,6 +1,5 @@
-/// Basic min-max agent for The Duke. First I planned to make the alpha-beta-search
-/// multi-threaded, but it seems the performance scales quite bad.
-/// https://stackoverflow.com/a/37534390/6478211
+//! Implments alpha beta agent for the Rusty Duke game.
+
 use crate::logic::{
     self, do_unsafe_action_copy, get_actions, get_spawn_squares, get_tile_actions, Action,
     ActionResult, ActionType, AvailableAction, AvailableEffect, Coordinate, Effect, GameState,
@@ -594,7 +593,6 @@ fn alpha_beta_search(agent: &Agent, state: &GameState) -> Option<Action> {
 }
 
 /// Returns action from super ordinary single threaded Alpha Beta Prune search.
-/// https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
 pub fn get_action(agent: &Agent, state: &logic::GameState) -> Option<Action> {
     return alpha_beta_search(agent, state);
 }

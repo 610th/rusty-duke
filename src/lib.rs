@@ -1,8 +1,14 @@
+//! # Rusty Duke
+//!
+//! Unofficial implementation of the [The Duke](https://boardgamegeek.com/boardgame/36235/duke) boardgame.
+//!
+//! Currently supports player vs. AI and AI vs AI.
+//!
+//! ## Try it
+//! `cargo run --release`
+
 #[macro_use]
 extern crate lazy_static;
 
-/// Implements AI agents for the Rusty Duke game.
 pub mod ai;
-
-/// Implements logic for the Rusty Duke game.
 pub mod logic;
