@@ -3,15 +3,15 @@ use std::fmt;
 pub use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-/// All logic for rusty-duke.
-/// Implementation is quite naive and is not using bitboards for performance.
-
+/// Width of game board in squares.
 pub const WIDTH: u8 = 6;
+/// Height of game board in squares.
 pub const HEIGHT: u8 = 6;
 
-// TODO: Use wrapping and/or ranged integers
+/// Board Coordinate
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Coordinate {
+    // FIXME: Use wrapping and/or ranged integers?
     pub x: u8,
     pub y: u8,
 }
@@ -28,11 +28,13 @@ impl Coordinate {
     }
 }
 
+/// Direction relative to tile.
 struct Direction {
     x: i8,
     y: i8,
 }
 
+/// Offset relative to tile.
 #[derive(Debug, Clone)]
 pub struct Offset {
     pub x: i8,
@@ -46,8 +48,7 @@ fn invert_offset(offset: &Offset) -> Offset {
     }
 }
 
-/// Take two coordinates and calculate direction. Only works for straight lines
-/// and diagonals.
+/// Take two coordinates and calculate direction. Only works for straight lines and diagonals.
 fn get_direction(start: Coordinate, end: Coordinate) -> Direction {
     debug_assert!(start != end);
 
@@ -68,12 +69,14 @@ fn get_direction(start: Coordinate, end: Coordinate) -> Direction {
     return dir;
 }
 
+/// Effect imposed by tile on square.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     Dread,
     Defence,
 }
 
+/// Square on board. Can have a tile and effects.
 #[derive(Debug, Clone)]
 pub struct Square {
     pub effects: Vec<Effect>,
@@ -89,6 +92,7 @@ impl Default for Square {
     }
 }
 
+/// Action type that a tile can perform.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
     NewFromBag,
@@ -101,6 +105,8 @@ pub enum ActionType {
     Strike,
 }
 
+
+/// Data included with standard tile action.
 #[derive(Debug, Clone, Copy)]
 pub struct ActionData {
     pub tile_pos: Coordinate,
@@ -108,6 +114,7 @@ pub struct ActionData {
     pub result: ActionResult,
 }
 
+/// Data included with command tile action.
 #[derive(Debug, Clone, Copy)]
 pub struct CommandActionData {
     pub tile_pos: Coordinate,
@@ -116,6 +123,7 @@ pub struct CommandActionData {
     pub result: ActionResult,
 }
 
+/// Action that a tile can perform.
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     NewFromBag,
@@ -128,37 +136,42 @@ pub enum Action {
     Strike(ActionData),
 }
 
+/// Result that action has on game state.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ActionResult {
     Move,
     Capture,
 }
 
-/// Specifies a tile capability (i.e. action).
+/// Specifies an action of a tile type.
 #[derive(Debug, Clone)]
 pub struct AvailableAction {
     pub kind: ActionType,
     offset: Offset,
 }
 
+/// Specifies an effect of a tile type.
 #[derive(Debug, Clone)]
 pub struct AvailableEffect {
     pub kind: Effect,
     offset: Offset,
 }
 
+/// Specifies possible tile colors.
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum TileColor {
     Black,
     White,
 }
 
+/// Contains winner of game.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Winner {
     Color(TileColor),
     //Draw, Draw does not exist in duke?
 }
 
+/// Tile type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
 pub enum TileType {
     // Basic tiles
@@ -195,16 +208,19 @@ impl fmt::Display for TileType {
     }
 }
 
+/// Actions that a tile type can perform.
 pub struct AvailableActions {
     pub front: Vec<AvailableAction>,
     pub back: Vec<AvailableAction>,
 }
 
+/// Effects that a tile type can perform.
 pub struct AvailableEffects {
     pub front: Vec<AvailableEffect>,
     pub back: Vec<AvailableEffect>,
 }
 
+/// Tile that can be played. Will be owned by bag, board or graveyard.
 #[derive(Debug, Clone, Copy)]
 pub struct Tile {
     pub kind: TileType,
@@ -220,7 +236,7 @@ impl Tile {
 
 lazy_static! {
 
-    /// This is where current configuration of rules are specified.
+    /// This is where tile types are defined.
     pub static ref TILE_ACTIONS: HashMap<TileType, AvailableActions> = {
 
         // FIXME: Specify tiles and rules in configuration file.
@@ -1234,17 +1250,22 @@ impl Tile {
 }
 
 /// Complete state of a duke game. Bag, board and graveyard are owner of tiles.
-/// Tiles, not references are stored, to make copying in recursive AI more efficient.
-/// Still, this is not very efficient.
 #[derive(Clone, Debug)]
 pub struct GameState {
+    /// Game board.
     pub board: [[Square; WIDTH as usize]; HEIGHT as usize],
-    pub bags: [Vec<Tile>; 2],        // All tiles go here at the beginning
-    pub drawn_tiles: [Vec<Tile>; 2], // When one draws a new tile it is placed here in limbo.
-    pub graveyard: Vec<Tile>,        // Dead tiles go here
+    /// Tiles go here before they are deployed to board. One bag per player.
+    pub bags: [Vec<Tile>; 2],
+    /// When one draws a new tile it is placed here in limbo. One queue for each player.
+    pub drawn_tiles: [Vec<Tile>; 2],
+    /// Dead tiles go here
+    pub graveyard: Vec<Tile>,
+    /// Specifies color of current player.
     pub ply: TileColor,
+    /// Stores winner if any.
     pub game_over: Option<Winner>,
-    dukes: [Option<Coordinate>; 2], // Put duke positions here to avoid extra search
+    /// Put duke positions here to avoid extra search
+    dukes: [Option<Coordinate>; 2],
 }
 
 impl GameState {
