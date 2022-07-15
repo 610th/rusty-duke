@@ -279,6 +279,7 @@ fn utility(agent: &Agent, state: &logic::GameState) -> i32 {
     // Calculate utility of game state
     let mut utility: i32 = 0;
     const CHECK_MATE_UTIL: i32 = 100000;
+    const CHECK_UTIL: i32 = 1000;
 
     let check_mate = |result: ActionResult, target_pos: Coordinate| {
         if result == ActionResult::Capture {
@@ -287,7 +288,7 @@ fn utility(agent: &Agent, state: &logic::GameState) -> i32 {
                 if tile.color == agent.color {
                     if state.ply == agent.color {
                         // Agent is checked.
-                        return -1000;
+                        return -CHECK_UTIL;
                     } else {
                         // Agent is check mate.
                         return -CHECK_MATE_UTIL;
@@ -298,7 +299,7 @@ fn utility(agent: &Agent, state: &logic::GameState) -> i32 {
                         return CHECK_MATE_UTIL;
                     } else {
                         // Opponent is checked.
-                        return 1000;
+                        return CHECK_UTIL;
                     }
                 }
             }
@@ -380,7 +381,6 @@ fn try_branch(
 ) -> (Option<Action>, i32) {
     match action {
         Action::NewFromBag => {
-            // This is hard because the action involves chance.
             // Special case, because this action is 2 stage.
 
             let mut u = 0;

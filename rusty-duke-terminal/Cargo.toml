@@ -1,0 +1,14 @@
+[package]
+name = "rusty-duke-terminal"
+license = "MIT"
+version = "0.1.0"
+authors = ["Sixten Thames <pm@sith.st>"]
+edition = "2021"
+
+[dependencies]
+rusty-duke-logic = { path = "../rusty-duke-logic" }
+crossterm = "0.23"
+strum = "0.24"
+strum_macros = "0.24"
+log = "0.4"
+flexi_logger = "0.22"

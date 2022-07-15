@@ -107,7 +107,6 @@ pub enum ActionType {
     Strike,
 }
 
-
 /// Data included with standard tile action.
 #[derive(Debug, Clone, Copy)]
 pub struct ActionData {

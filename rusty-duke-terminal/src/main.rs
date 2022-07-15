@@ -1,19 +1,17 @@
-/// Terminal interface for Rusty Duke game. Only single player vs AI.
-///
-/// Very basic for manual testing. If you want something more fancy, feel free
-/// to contribute.
-pub use crossterm::{
+//! Terminal interface for Rusty Duke game. Only supports single player vs. AI and AI vs. AI.
+//!
+//! Very basic for ad hoc manual testing. If you want something more fancy, feel free to contribute.
+
+use crossterm::{
     cursor::{self, MoveTo, MoveToNextLine, RestorePosition, SavePosition},
-    event::{self, read, Event, KeyCode, KeyEvent},
+    event::{read, Event, KeyCode},
     execute, queue,
-    style::{
-        self, Attribute, Color, Colors, Print, ResetColor, SetBackgroundColor, SetForegroundColor,
-        Stylize,
-    },
-    terminal::{self, ClearType, SetTitle},
-    Command, Result,
+    style::{self, Color, Colors, Print, ResetColor, Stylize},
+    terminal::{self, SetTitle},
+    Result,
 };
-use rusty_duke::{
+use flexi_logger::{self, FileSpec, Logger};
+use rusty_duke_logic::{
     ai::alpha_beta::{self, Agent},
     logic::{self, Action, Coordinate, GameState, Tile, TileColor},
 };
@@ -21,8 +19,6 @@ use std::{
     io::{self, stdin, Write},
     time::Duration,
 };
-
-use flexi_logger::{self, FileSpec, Logger};
 
 /// (X,Y)
 const SQUARE_SIZE: (u16, u16) = (16, 6);
@@ -280,7 +276,7 @@ where
         "Rusty Duke",
         width = (TERM_WIDTH + 1) as usize
     );
-    queue!(w, style::Print(s), cursor::MoveToNextLine(1))?;
+    queue!(w, style::Print(s), MoveToNextLine(1))?;
 
     // Print board
     for y in 0..(SQUARE_SIZE.1 * logic::HEIGHT as u16) {
@@ -288,7 +284,7 @@ where
             queue!(
                 w,
                 style::Print("-".repeat(1 + (SQUARE_SIZE.0 * logic::WIDTH as u16) as usize)),
-                cursor::MoveToNextLine(1)
+                MoveToNextLine(1)
             )?;
         } else {
             let s: String = format!(
@@ -678,8 +674,7 @@ where
                 }
             }
             // Command tile
-            Event::Key(event) if event.code == KeyCode::Char('c') =>
-            {
+            Event::Key(event) if event.code == KeyCode::Char('c') => {
                 if play_state.selected.is_some() {
                     // Maybe just select second tile to command?
                     if can_command_tile(play_state) {
@@ -688,8 +683,7 @@ where
                 }
             }
             // Grab new tile from bag.
-            Event::Key(event) if event.code == KeyCode::Char('n') =>
-            {
+            Event::Key(event) if event.code == KeyCode::Char('n') => {
                 if draw_new_tile(play_state) {
                     play_state.selected_command = None;
                     play_state.selected = None;
@@ -754,8 +748,7 @@ where
         w.flush()?;
 
         match read()? {
-            Event::Key(event) if event.code == KeyCode::Char('q') =>
-            {
+            Event::Key(event) if event.code == KeyCode::Char('q') => {
                 *state = State::MainMenu;
                 break;
             }

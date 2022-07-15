@@ -1,0 +1,17 @@
+[package]
+name = "rusty-duke-logic"
+license = "MIT"
+version = "0.1.0"
+authors = ["Sixten Thames <pm@sith.st>"]
+edition = "2021"
+
+#[lib]
+#name = "logic"
+#path = "src/lib.rs"
+
+[dependencies]
+rand = "0.8"
+lazy_static = "1.4"
+strum = "0.24"
+strum_macros = "0.24"
+log = "0.4"
