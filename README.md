@@ -1,12 +1,12 @@
 # Rusty Duke
 
-Unofficial, non-commercial and open source clone of the [The Duke](https://boardgamegeek.com/boardgame/257601/duke-lords-legacy) board game. Currently only support the basic tile set.
+Unofficial, non-commercial and open source clone of the [The Duke](https://boardgamegeek.com/boardgame/257601/duke-lords-legacy) board game. Currently, only support the basic tile set.
 
 If you want to know the rules of the game: buy the official game, ask someone who knows, "learn by doing" or read the code. I will not post the rules here.
 
 The AI is decent, but feel free to contribute if you want more of a challenge. The heuristics are quite naive, so there should be some low-hanging fruits to pick.
 
-I started this project because I wanted to learn Rust and I want to be able to play 'The Duke' online with friends.
+I started this project because I wanted to learn Rust and do some AI development. I also want to be able to play 'The Duke' online with friends.
 
 ## Try it
 
