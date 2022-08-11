@@ -1,6 +1,7 @@
 use crate::{AppState, despawn_screen, NORMAL_BUTTON_COLOR};
 use crate::menu::*;
 use bevy::{prelude::*, ui::Interaction};
+use rusty_duke_logic::logic::{get_actions, do_unsafe_action};
 use rusty_duke_logic::{
     ai::alpha_beta::{self, Agent},
     logic::{self, Action, Coordinate, GameState, Tile, TileColor},
@@ -17,7 +18,12 @@ const DEFAULT_TEXT_FONT: &str = "fonts/FiraSans-Bold.ttf";
 // Board
 const BOARD_COLOR: Color = Color::BEIGE;
 const FOCUSED_SQUARE_COLOR: Color = Color::GRAY;
-const SELECTED_SQUARE_COLOR: Color = Color::DARK_GRAY;
+const SELECTED_SQUARE_COLOR: Color = Color::TEAL;
+const COMMANDED_SQUARE_COLOR: Color = Color::TEAL;
+const ATTACKED_SQUARE_COLOR: Color = Color::TOMATO;
+const STRIKED_SQUARE_COLOR: Color = Color::SALMON;
+const MOVE_SQUARE_COLOR: Color = Color::OLIVE;
+const DEPLOYABLE_SQUARE_COLOR: Color = Color::ORANGE;
 const SQUARE_MARGIN_PX: f32 = 5.0;
 
 // Tiles
@@ -31,11 +37,13 @@ const TILE_TEXT_FONT: &str = "fonts/FiraSans-Bold.ttf";
 const TILE_TEXT_FONT_SIZE: f32 = 15.0;
 const TILE_MARGIN_PX: f32 = 5.0;
 
+/*const SELECTED_TILE_COLOR: Color = Color::TEAL;
+const ATTACKED_TILE_COLOR: Color = Color::TOMATO;
+const COMMANDED_TILE_COLOR: Color = Color::NONE;*/
+
 const DOUBLE_CLICK_TIME_NS: u32 = 500 * 1000 * 1000; // 500 ms
 
 // Components
-#[derive(Component)]
-struct DrawNewTile;
 #[derive(Component)]
 struct Selected;
 #[derive(Component)]
@@ -60,20 +68,10 @@ struct Opponent;
 struct TColor(TileColor);
 #[derive(Component)]
 struct GameTile;
-#[derive(Component, Debug)]
-enum TileAction {
-    Deploy,
-    Move,
-    Jump,
-    JumpSlide,
-    Slide,
-    Command,
-    Strike,
-}
 #[derive(Component)]
-struct Effect(logic::Effect);
+struct DrawNewTile;
 #[derive(Component)]
-struct TileType(logic::TileType);
+struct TilePlaceholder;
 
 // Resources
 struct Game(GameState);
@@ -84,6 +82,14 @@ enum Turn {
 }
 struct TurnTracker(Turn);
 struct ClickTime(Instant);
+enum TileState {
+    Normal,
+    Drawn,
+    Selected,
+    Attacked,
+    Striked,
+    Commanded,
+}
 
 // Events
 struct ClearBoardEvent;
@@ -123,8 +129,8 @@ impl Plugin for GamePlugin {
         .add_system_set(
             SystemSet::on_update(AppState::SingleplayerMenu)
                 .with_system(interaction_system)
-                .with_system(clear_board)
-                .with_system(update_board)
+                .with_system(clear_board_effects)
+                .with_system(update_board_system)
         )
         .add_system_set(
             SystemSet::on_exit(AppState::SingleplayerGame)
@@ -284,7 +290,7 @@ fn setup_game(
                 })
                 .with_children(|parent| {
 
-                    // Menu hamburger button
+                    // Draw new tile button
                     parent
                     .spawn_bundle(ButtonBundle {
                         style: button_style.clone(),
@@ -302,7 +308,7 @@ fn setup_game(
                     // Drawn Tile
                     parent
                         .spawn_bundle(TextBundle::from_section("", timer_text_style))
-                        .insert(DrawnTile);
+                        .insert(TilePlaceholder);
                 });
 
             // Player time
@@ -312,34 +318,30 @@ fn setup_game(
         });
 }
 
-
-// This is an event reader and not a system. Mainly triggered by the interaction system.
-fn update_board(
+// Looks at game state and interactions and updates the board accordingly.
+fn update_board_system(
     mut commands: Commands,
     mut ev_update: EventReader<UpdateBoardEvent>,
     asset_server: Res<AssetServer>,
     state: Res<GameState>,
     mut squares_query: Query<
-        (Entity, &Cord, Option<&Selected>, Option<&Commanded>, Option<&DoubleClicked>, &Children)
+        (
+            Entity,
+            &Cord, // Square specific.
+            Option<&Selected>,
+            Option<&Commanded>,
+            Option<&DoubleClicked>,
+            Option<&Children>,
+            &mut UiColor
+        )
     >,
-    selected_query: Query<&Parent, With<Selected>>
+    selected_query: Query<&Cord, With<Selected>>,
+    commanded_query: Query<&Cord, With<Selected>>,
+    tile_placeholder: Query<(Entity, Option<&Children>), (With<TilePlaceholder>)>
 ) {
     let state = &state;
     let board = &state.board;
     let font = asset_server.load(TILE_TEXT_FONT);
-
-    let tile_style = Style {
-        margin: UiRect::all(Val::Px(5.0)),
-        flex_direction: FlexDirection::ColumnReverse,
-        align_items: AlignItems::Center,
-        ..default()
-    };
-
-    let tile_text_style = TextStyle {
-        font: font.clone(),
-        font_size: TILE_TEXT_FONT_SIZE,
-        ..default()
-    };
 
     let selected_text_style = TextStyle {
         font: font.clone(),
@@ -358,26 +360,39 @@ fn update_board(
 
     if !selected_query.is_empty() {
         // Only get tile actions if a tile is selected
-        let parent = selected_query.single();
-
         let cord = selected_query.single().0;
         actions = logic::get_tile_actions(state, cord);
     } else if !state.drawn().is_empty() {
-        // Get all actions (only contains deploy actions) if new tile is drawn.
+        // Or get all actions (only contains deploy actions) if new tile is drawn.
         actions = logic::get_actions(state);
     }
 
-    for (square, cord, selected, commanded, double_clicked, children) in squares_query.iter() {
+    if !state.drawn().is_empty() {
+        let tile = state.drawn().last().unwrap();
+        let ui_tile = create_ui_tile(
+            commands,
+            asset_server,
+            tile,
+            TileState::Drawn);
+            commands.entity(tile_placeholder.single().0).push_children(&[ui_tile]);
+    }
+    else {
+        // Remove any drawn tile.
+        if tile_placeholder.single().1 .is_some() {
+            for child in tile_placeholder.single().1.unwrap() {
+                commands.entity(*child).despawn_recursive();
+            }
+        }
+    }
 
-        // All UI tiles are entities and children to UI squares, because we want
-        // to utilize that children transforms are relative to parents.
+    for (square, cord, selected, commanded, double_clicked, children, color) in squares_query.iter() {
 
         // This is not pretty, but works for now. First, remove all tiles and
-        // then reprint them. More elegant, but maybe not more efficient, would
-        // be to not remove the entity every iteration. However, performance is
-        // not an issue here.
-        for child in children {
-            commands.entity(*child).despawn_recursive();
+        // then re-add them. Performance is not really an issue here. I think.
+        if children.is_some() {
+            for child in children.unwrap() {
+                commands.entity(*child).despawn_recursive();
+            }
         }
 
         let cord = cord.0;
@@ -385,99 +400,77 @@ fn update_board(
 
         let mut ui_tile: Option<Entity> = None;
 
-        // Print tile
-        if tile.is_some() {
-
-            let tile = tile.as_ref().unwrap();
-            let mut tts = tile_text_style.clone();
-
-            if tile.color == TileColor::Black {
-                tts.color = BLACK_TILE_TEXT_COLOR;
-            }
-            else {
-                tts.color = WHITE_TILE_TEXT_COLOR;
-            }
-
-            let tile_color = if tile.color == TileColor::Black {BLACK_TILE_COLOR} else {WHITE_TILE_COLOR};
-
-            ui_tile = Some(commands.spawn_bundle(NodeBundle{
-                style: tile_style,
-                color: tile_color.into(),
-                ..default()
-            })
-            .with_children(|parent| {
-                parent.spawn_bundle(TextBundle::from_section(
-                    tile.kind.to_string(),
-                    tts.clone(),
-                ));
-            })
-            .insert(GameTile)
-            .id());
-
-            commands.entity(square).push_children(&[ui_tile.unwrap()]);
-        }
-
-        // Add effects
+        // Add tiles and effects.
         for a in actions.iter() {
             match a {
                 Action::PlaceNew(c) if *c == cord => {
-                    commands.entity(square).insert(TileAction::Deploy);
+                    *color = DEPLOYABLE_SQUARE_COLOR.into();
                 }
-                Action::Move(ad) if ad.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::Move);
-                    } else {
-                        commands.entity(square).insert(TileAction::Move);
-                    }
-                }
-                Action::Jump(ad) if ad.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::Jump);
-                    } else {
-                        commands.entity(square).insert(TileAction::Jump);
-                    }
-                }
-                Action::Slide(ad) if ad.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::Slide);
-                    } else {
-                        commands.entity(square).insert(TileAction::Slide);
-                    }
-                }
-                Action::JumpSlide(ad) if ad.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::JumpSlide);
-                    } else {
-                        commands.entity(square).insert(TileAction::JumpSlide);
-                    }
+                Action::Move(ad)
+                | Action::Jump(ad)
+                | Action::Slide(ad)
+                | Action::JumpSlide(ad)
+                    if ad.target_pos == cord => {
+                        if tile.is_some() {
+                            ui_tile = Some(create_ui_tile(
+                                                    commands,
+                                                    asset_server,
+                                                    tile.as_ref().unwrap(),
+                                                    TileState::Attacked));
+                            commands.entity(square).push_children(&[ui_tile.unwrap()]);
+                        } else {
+                            *color = MOVE_SQUARE_COLOR.into();
+                        }
                 }
                 Action::Command(cd) if cd.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::Command);
+                    if tile.is_some() {
+                        ui_tile = Some(create_ui_tile(
+                                                commands,
+                                                asset_server,
+                                                tile.as_ref().unwrap(),
+                                                TileState::Commanded));
+                        commands.entity(square).push_children(&[ui_tile.unwrap()]);
                     } else {
-                        commands.entity(square).insert(TileAction::Command);
+                        *color = COMMANDED_SQUARE_COLOR.into();
                     }
                 }
                 Action::Strike(ad) if ad.target_pos == cord => {
-                    if ui_tile.is_some() {
-                        commands.entity(ui_tile.unwrap()).insert(TileAction::Strike);
+                    if tile.is_some() {
+                        ui_tile = Some(create_ui_tile(
+                                                    commands,
+                                                    asset_server,
+                                                    tile.as_ref().unwrap(),
+                                                    TileState::Striked));
+                        commands.entity(square).push_children(&[ui_tile.unwrap()]);
                     } else {
-                        commands.entity(square).insert(TileAction::Strike);
+                        *color = STRIKED_SQUARE_COLOR.into();
                     }
                 }
                 _ => {}
             }
         }
 
-        // Update colors and text
+        if tile.is_some() && ui_tile.is_none() {
+
+            if selected.is_some() {
+                    ui_tile = Some(create_ui_tile(
+                                                commands,
+                                                asset_server,
+                                                tile.as_ref().unwrap(),
+                                                TileState::Selected));
+                    commands.entity(square).push_children(&[ui_tile.unwrap()]);
+            }
+
+            if commanded.is_some() {
+                ui_tile = Some(create_ui_tile(
+                    commands,
+                    asset_server,
+                    tile.as_ref().unwrap(),
+                    TileState::Commanded));
+                    commands.entity(square).push_children(&[ui_tile.unwrap()]);
+            }
+        }
     }
-
-    // Add effects
-
-
-    // Add drawn tile
-
-
 }
 
 fn timers_system(
@@ -494,22 +487,23 @@ fn timers_system(
     }
 }
 
-/// This is where the magic happens. Should probably be splitted into several
-/// systems if one wants to be ECS purist.
+/// Takes input and changes game and UI state. No UI updates are done here.
+/// Should probably be splitted into several systems if one wants to be ECS
+/// purist.
 fn interaction_system(
     mut commands: Commands,
     mut turn: ResMut<TurnTracker>,
     mut game_state: ResMut<Game>,
     mut click_time: ResMut<ClickTime>,
     mut interaction_query: Query<
-        (Entity, &Interaction, Option<&Cord>, Option<&TColor>),
+        (Entity, &Interaction, Option<&Cord>, Option<&GameTile>),
         (Changed<Interaction>),
     >,
     mut selected_query: Query<
-        (Entity, &Cord, &TColor), With<Selected>
+        (Entity, &Cord), With<Selected>
     >,
     mut commanded_query: Query<
-        (Entity, &Cord, &TColor), With<Commanded>
+        (Entity, &Cord), With<Commanded>
     >,
     mut player_query: Query<&TColor, With<Player>>,
     mut double_clicked: Query<Entity, With<DoubleClicked>>,
@@ -532,9 +526,7 @@ fn interaction_system(
         commanded = Some((*c).0);
     }
 
-    for (e, i, c, tc) in interaction_query.iter() {
-
-        let cord = c.0;
+    for (e, i, c, gt) in interaction_query.iter() {
 
         match i {
 
@@ -545,6 +537,8 @@ fn interaction_system(
                     ev_clear.send(ClearBoardEvent);
                     break;
                 }
+
+                let cord = c.unwrap().0;
 
                 // Clear any double clicks
                 if !double_clicked.is_empty() {
@@ -573,8 +567,9 @@ fn interaction_system(
 
                     for a in actions {
                         match a {
-                            Action::NewFromBag => {
+                            Action::PlaceNew(c) if c == cord => {
                                 logic::do_unsafe_action(&mut game, &a);
+
                                 // Opponent turn
                                 turn.0 = Turn::Opponent;
                                 // Opponent turn event?
@@ -600,15 +595,16 @@ fn interaction_system(
                                 | Action::Slide(ad)
                                 | Action::JumpSlide(ad)
                                 | Action::Strike(ad)
-                                    if ad.target_pos == cord && commanded.is_none() =>
+                                if ad.target_pos == cord =>
                                 {
+
                                     logic::do_unsafe_action(&mut game_state.0, a);
 
                                     // Clear components
-                                    commands.entity(selected_query.single().0)
-                                                .remove::<Selected>();
+                                    ev_clear.send(ClearBoardEvent);
 
                                     // Let opponent do her turn.
+                                    turn.0 = Turn::Opponent;
 
                                 }
                                 Action::Command(cd) if cd.target_pos == cord => {
@@ -619,12 +615,10 @@ fn interaction_system(
                                             logic::do_unsafe_action(&mut game_state.0, a);
 
                                             // Clear square components
-                                            commands.entity(selected_query.single().0)
-                                                .remove::<Selected>();
-                                            commands.entity(commanded_query.single().0)
-                                                .remove::<Commanded>();
+                                            ev_clear.send(ClearBoardEvent);
 
                                             // Let opponent do her turn.
+                                            turn.0 = Turn::Opponent;
 
                                         }
                                     }
@@ -638,15 +632,12 @@ fn interaction_system(
                     }
                     else {
                         // If not selected and tile on square, select.
-                        if tc.is_some() {
+                        if gt.is_some() {
                             // If not selected, select.
                             commands.entity(e).insert(Selected);
                         }
                     }
                 }
-
-                // Always update board after click
-                ev_update.send(UpdateBoardEvent);
             }
             Interaction::Hovered => {
                 // FIXME: Change square color.
@@ -656,17 +647,34 @@ fn interaction_system(
     }
 }
 
+// Menu button is handled in generic menu handler.
+fn draw_button_system(
+    mut interaction_query: Query<
+        &Interaction,
+        (Changed<Interaction>, With<Button>, With<DrawNewTile>),
+    >,
+    mut state: ResMut<GameState>
+) {
+    if let Interaction::Clicked = interaction_query.single() {
+        for action in get_actions(&state) {
+            if let Action::NewFromBag = action {
+                do_unsafe_action(&mut state, &action);
+            }
+        }
+    }
+}
+
 // Clear select, actions etc.
-fn clear_board(
+fn clear_board_effects(
     mut commands: Commands,
     mut ev_clear: EventReader<ClearBoardEvent>,
     mut ev_update: EventWriter<UpdateBoardEvent>,
-    mut squares: Query<
+    mut things: Query<
         Entity,
         With<Cord>,
     >,
 ) {
-    for e in squares.iter() {
+    for e in things.iter() {
         commands.entity(e).remove::<Selected>();
         commands.entity(e).remove::<Commanded>();
         commands.entity(e).remove::<DoubleClicked>();
@@ -675,4 +683,72 @@ fn clear_board(
     }
 
     ev_update.send(UpdateBoardEvent);
+}
+
+fn create_ui_tile(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    tile: &Tile,
+    state: TileState
+) -> Entity {
+
+    let font = asset_server.load(TILE_TEXT_FONT);
+
+    let tile_style = Style {
+        margin: UiRect::all(Val::Px(5.0)),
+        flex_direction: FlexDirection::ColumnReverse,
+        align_items: AlignItems::Center,
+        ..default()
+    };
+
+    let tile_text_style = TextStyle {
+        font: font.clone(),
+        font_size: TILE_TEXT_FONT_SIZE,
+        ..default()
+    };
+
+    let mut tts = tile_text_style.clone();
+
+    if tile.color == TileColor::Black {
+        tts.color = BLACK_TILE_TEXT_COLOR;
+    }
+    else {
+        tts.color = WHITE_TILE_TEXT_COLOR;
+    }
+
+    let mut tile_color = if tile.color == TileColor::Black {BLACK_TILE_COLOR} else {WHITE_TILE_COLOR};
+
+    match state {
+        Selected => {
+
+        }
+        Attacked => {
+
+        }
+        Striked => {
+
+        }
+        Commanded => {
+
+        }
+        _ => {}
+    }
+
+    // FIXME: Add tile icon
+
+    let ui_tile = Some(commands.spawn_bundle(NodeBundle{
+        style: tile_style,
+        color: tile_color.into(),
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn_bundle(TextBundle::from_section(
+            tile.kind.to_string(),
+            tts.clone(),
+        ));
+    })
+    .insert(GameTile)
+    .id());
+
+    ui_tile
 }

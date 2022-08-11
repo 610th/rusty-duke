@@ -1,8 +1,8 @@
 # Rusty Duke
 
-Unofficial, non-commercial and open source clone of the [The Duke](https://boardgamegeek.com/boardgame/257601/duke-lords-legacy) board game. Currently, only supports the basic tile set.
+Unofficial, non-commercial and open source clone of the [The Duke](https://boardgamegeek.com/boardgame/257601/duke-lords-legacy) board game. Still, very much work in progress.
 
-See the official game for rules.
+See the official game for rules. Currently, only supports the basic tile set (though it is easy to add custom tile types).
 
 The AI is decent, but feel free to contribute if you want more of a challenge. The heuristics are quite naive, so there should be some low-hanging fruits to pick.
 
@@ -16,7 +16,7 @@ Front-end implemented with [Bevy](https://bevyengine.org/).
 
 ### Terminal
 
-Supports player vs. AI and AI vs. AI. Mainly for early manual testing of the game logic and AI. Will probably not get updated. Front-end implemented with [Crossterm](https://docs.rs/crossterm/latest/crossterm/).
+Supports player vs. AI and AI vs. AI. Made for early ad hoc testing of the game logic and AI. Will probably not get updated. Front-end implemented with [Crossterm](https://docs.rs/crossterm/latest/crossterm/).
 
 `cargo run -p rusty-duke-terminal --release`
 

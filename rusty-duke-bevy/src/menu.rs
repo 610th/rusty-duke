@@ -589,22 +589,29 @@ fn menu_action(
         if *interaction == Interaction::Clicked {
             match menu_button_action {
                 MenuButtonAction::MainMenu => {
-                    game_state.set(AppState::Game).unwrap();
+                    game_state.set(AppState::MainMenu).unwrap();
                 }
                 MenuButtonAction::SingleplayerMenu => {
-                    game_state.set(AppState::Game).unwrap();
+                    game_state.set(AppState::SingleplayerMenu).unwrap();
                 }
                 MenuButtonAction::MultiplayerMenu => {
-                    game_state.set(AppState::Game).unwrap();
+                    //game_state.set(AppState::MultiplayerMenu).unwrap();
                 }
                 MenuButtonAction::InGameMenu => {
-                    game_state.set(AppState::Game).unwrap();
+                    game_state.push(AppState::InGameMenu).unwrap();
                 }
                 MenuButtonAction::Play => {
-                    if *game_state.current() == AppState::InGameMenu {
-                        game_state.pop().unwrap();
-                    } else {
-                        game_state.set(AppState::Game).unwrap();
+                    match *game_state.current() {
+                        AppState::InGameMenu => {
+                            game_state.pop().unwrap();
+                        },
+                        AppState::SingleplayerMenu => {
+                            game_state.set(AppState::SingleplayerGame).unwrap();
+                        }
+                        AppState::MultiplayerMenu => {
+                            game_state.set(AppState::MultiplayerGame).unwrap();
+                        }
+                        _ => {}
                     }
                 }
                 MenuButtonAction::Quit => app_exit_events.send(AppExit),
