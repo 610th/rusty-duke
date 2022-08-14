@@ -14,25 +14,25 @@ const MENU_BUTTON_COLOR: Color = Color::DARK_GRAY;
 const BACKGROUND_COLOR: Color = Color::DARK_GRAY;
 const DRAW_BUTTON_COLOR: Color = Color::GRAY;
 const DEFAULT_TEXT_FONT: &str = "fonts/FiraSans-Bold.ttf";
+const AI_TIMEOUT_MS: u32 = 5 * 1000; // 5 seconds
 
 // Board
 const BOARD_COLOR: Color = Color::BEIGE;
-const FOCUSED_SQUARE_COLOR: Color = Color::GRAY;
-const SELECTED_SQUARE_COLOR: Color = Color::TEAL;
 const COMMANDED_SQUARE_COLOR: Color = Color::TEAL;
 const ATTACKED_SQUARE_COLOR: Color = Color::TOMATO;
 const STRIKED_SQUARE_COLOR: Color = Color::SALMON;
 const MOVE_SQUARE_COLOR: Color = Color::OLIVE;
 const DEPLOYABLE_SQUARE_COLOR: Color = Color::ORANGE;
+const SQUARE_EFFECT_TEXT_COLOR: Color = Color::RED;
 const SQUARE_MARGIN_PX: f32 = 5.0;
 
 // Tiles
-const BLACK_TILE_COLOR: Color = Color::NONE;
-const BLACK_TILE_TEXT_COLOR: Color = Color::BISQUE;
-const TILE_EFFECT_TEXT_COLOR: Color = Color::RED;
+pub const BLACK_TILE_COLOR: Color = Color::NONE;
+pub const BLACK_TILE_TEXT_COLOR: Color = Color::BISQUE;
+const SELECTED_TILE_COLOR: Color = Color::TEAL;
 const TILE_SELECTED_TEXT_COLOR: Color = Color::BLUE;
-const WHITE_TILE_COLOR: Color = Color::BISQUE;
-const WHITE_TILE_TEXT_COLOR: Color = Color::NONE;
+pub const WHITE_TILE_COLOR: Color = Color::BISQUE;
+pub const WHITE_TILE_TEXT_COLOR: Color = Color::NONE;
 const TILE_TEXT_FONT: &str = "fonts/FiraSans-Bold.ttf";
 const TILE_TEXT_FONT_SIZE: f32 = 15.0;
 const TILE_MARGIN_PX: f32 = 5.0;
@@ -72,6 +72,8 @@ struct GameTile;
 struct DrawNewTile;
 #[derive(Component)]
 struct TilePlaceholder;
+#[derive(Component)]
+struct Ai(Agent);
 
 // Resources
 struct Game(GameState);
@@ -131,6 +133,7 @@ impl Plugin for GamePlugin {
                 .with_system(interaction_system)
                 .with_system(clear_board_effects)
                 .with_system(update_board_system)
+                .with_system(draw_button_system)
         )
         .add_system_set(
             SystemSet::on_exit(AppState::SingleplayerGame)
@@ -142,8 +145,9 @@ impl Plugin for GamePlugin {
 fn setup_game(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    app_state: Res<State<AppState>>,
     game_time: Res<GameTime>,
-    state: Res<AppState>) {
+    player_color: Res<PlayerColor>) {
 
     let font = asset_server.load(DEFAULT_TEXT_FONT);
 
@@ -187,7 +191,23 @@ fn setup_game(
     // commands.spawn().insert(GameLogic("Elaina Proctor".to_string()));
 
     // Add player
-    //commands.spawn().insert(Player).insert(Name("Elaina Proctor".to_string()));
+    commands.spawn().insert(Player).insert(TColor(player_color.0));
+
+    // Add opponent
+    if let AppState::SingleplayerGame = app_state.0 {
+
+        if player_color.0 == TileColor::Black {
+            commands.spawn().insert(Opponent).insert(Ai(logic::ai::alpha_beta::new(
+                TileColor::White,
+                Some(ai_depth),
+                Some(AI_TIMEOUT_MS),
+
+            ));
+        }
+    }
+    else {
+        todo!();
+    }
 
     // Create game screen
     commands
@@ -219,7 +239,7 @@ fn setup_game(
 
                     // Opponent time
                     parent
-                        .spawn_bundle(TextBundle::from_section("00:00", timer_text_style))
+                        .spawn_bundle(TextBundle::from_section("00:00", timer_text_style.clone()))
                         .insert(OpponentTime(Timer::new(game_time.0, false)));
 
                     // Menu hamburger button
@@ -267,7 +287,7 @@ fn setup_game(
                                 for x in 0..logic::WIDTH {
                                     parent
                                         .spawn_bundle(NodeBundle {
-                                            style: square_style,
+                                            style: square_style.clone(),
                                             ..default()
                                         })
                                         .insert(Interaction::None)
@@ -307,7 +327,7 @@ fn setup_game(
 
                     // Drawn Tile
                     parent
-                        .spawn_bundle(TextBundle::from_section("", timer_text_style))
+                        .spawn_bundle(TextBundle::from_section("", timer_text_style.clone()))
                         .insert(TilePlaceholder);
                 });
 
@@ -321,8 +341,8 @@ fn setup_game(
 // Looks at game state and interactions and updates the board accordingly.
 fn update_board_system(
     mut commands: Commands,
-    mut ev_update: EventReader<UpdateBoardEvent>,
     asset_server: Res<AssetServer>,
+    mut ev_update: EventReader<UpdateBoardEvent>,
     state: Res<GameState>,
     mut squares_query: Query<
         (
@@ -337,23 +357,12 @@ fn update_board_system(
     >,
     selected_query: Query<&Cord, With<Selected>>,
     commanded_query: Query<&Cord, With<Selected>>,
-    tile_placeholder: Query<(Entity, Option<&Children>), (With<TilePlaceholder>)>
+    tile_placeholder: Query<(Entity, Option<&Children>), With<TilePlaceholder>>
 ) {
+    let font: Handle<Font> = asset_server.load(TILE_TEXT_FONT);
+
     let state = &state;
     let board = &state.board;
-    let font = asset_server.load(TILE_TEXT_FONT);
-
-    let selected_text_style = TextStyle {
-        font: font.clone(),
-        font_size: TILE_TEXT_FONT_SIZE,
-        color: TILE_SELECTED_TEXT_COLOR,
-    };
-
-    let effect_text_style = TextStyle {
-        font: font.clone(),
-        font_size: TILE_TEXT_FONT_SIZE,
-        color: TILE_EFFECT_TEXT_COLOR,
-    };
 
     // Get actions before updating the board.
     let mut actions: Vec<Action> = Vec::new();
@@ -370,8 +379,8 @@ fn update_board_system(
     if !state.drawn().is_empty() {
         let tile = state.drawn().last().unwrap();
         let ui_tile = create_ui_tile(
-            commands,
-            asset_server,
+            &mut commands,
+            &asset_server,
             tile,
             TileState::Drawn);
             commands.entity(tile_placeholder.single().0).push_children(&[ui_tile]);
@@ -385,7 +394,7 @@ fn update_board_system(
         }
     }
 
-    for (square, cord, selected, commanded, double_clicked, children, color) in squares_query.iter() {
+    for (square, cord, selected, commanded, double_clicked, children, mut color) in squares_query.iter_mut() {
 
         // This is not pretty, but works for now. First, remove all tiles and
         // then re-add them. Performance is not really an issue here. I think.
@@ -413,8 +422,8 @@ fn update_board_system(
                     if ad.target_pos == cord => {
                         if tile.is_some() {
                             ui_tile = Some(create_ui_tile(
-                                                    commands,
-                                                    asset_server,
+                                                    &mut commands,
+                                                    &asset_server,
                                                     tile.as_ref().unwrap(),
                                                     TileState::Attacked));
                             commands.entity(square).push_children(&[ui_tile.unwrap()]);
@@ -425,8 +434,8 @@ fn update_board_system(
                 Action::Command(cd) if cd.target_pos == cord => {
                     if tile.is_some() {
                         ui_tile = Some(create_ui_tile(
-                                                commands,
-                                                asset_server,
+                                                &mut commands,
+                                                &asset_server,
                                                 tile.as_ref().unwrap(),
                                                 TileState::Commanded));
                         commands.entity(square).push_children(&[ui_tile.unwrap()]);
@@ -437,8 +446,8 @@ fn update_board_system(
                 Action::Strike(ad) if ad.target_pos == cord => {
                     if tile.is_some() {
                         ui_tile = Some(create_ui_tile(
-                                                    commands,
-                                                    asset_server,
+                                                    &mut commands,
+                                                    &asset_server,
                                                     tile.as_ref().unwrap(),
                                                     TileState::Striked));
                         commands.entity(square).push_children(&[ui_tile.unwrap()]);
@@ -454,8 +463,8 @@ fn update_board_system(
 
             if selected.is_some() {
                     ui_tile = Some(create_ui_tile(
-                                                commands,
-                                                asset_server,
+                                                &mut commands,
+                                                &asset_server,
                                                 tile.as_ref().unwrap(),
                                                 TileState::Selected));
                     commands.entity(square).push_children(&[ui_tile.unwrap()]);
@@ -463,8 +472,8 @@ fn update_board_system(
 
             if commanded.is_some() {
                 ui_tile = Some(create_ui_tile(
-                    commands,
-                    asset_server,
+                    &mut commands,
+                    &asset_server,
                     tile.as_ref().unwrap(),
                     TileState::Commanded));
                     commands.entity(square).push_children(&[ui_tile.unwrap()]);
@@ -475,8 +484,8 @@ fn update_board_system(
 
 fn timers_system(
     time: Res<Time>,
-    player_time: ResMut<PlayerTime>,
-    opponent_time: ResMut<OpponentTime>,
+    mut player_time: ResMut<PlayerTime>,
+    mut opponent_time: ResMut<OpponentTime>,
     turn: Res<TurnTracker>
 ) {
     if turn.0 == Turn::Player {
@@ -497,7 +506,7 @@ fn interaction_system(
     mut click_time: ResMut<ClickTime>,
     mut interaction_query: Query<
         (Entity, &Interaction, Option<&Cord>, Option<&GameTile>),
-        (Changed<Interaction>),
+        Changed<Interaction>,
     >,
     mut selected_query: Query<
         (Entity, &Cord), With<Selected>
@@ -511,10 +520,9 @@ fn interaction_system(
     mut ev_update: EventWriter<UpdateBoardEvent>,
 ) {
 
-    let game = &game_state.0;
+    let mut game = &mut game_state.0;
     let mut selected = None;
     let mut commanded = None;
-    let player_color = player_query.single().0;
 
     if !selected_query.is_empty() {
         // FIXME: This is ugly.
@@ -568,7 +576,7 @@ fn interaction_system(
                     for a in actions {
                         match a {
                             Action::PlaceNew(c) if c == cord => {
-                                logic::do_unsafe_action(&mut game, &a);
+                                logic::do_unsafe_action(game, &a);
 
                                 // Opponent turn
                                 turn.0 = Turn::Opponent;
@@ -598,7 +606,7 @@ fn interaction_system(
                                 if ad.target_pos == cord =>
                                 {
 
-                                    logic::do_unsafe_action(&mut game_state.0, a);
+                                    logic::do_unsafe_action(game, a);
 
                                     // Clear components
                                     ev_clear.send(ClearBoardEvent);
@@ -612,7 +620,7 @@ fn interaction_system(
                                     if commanded.is_some() {
                                         let sc = commanded.unwrap();
                                         if sc == cd.command_tile_pos {
-                                            logic::do_unsafe_action(&mut game_state.0, a);
+                                            logic::do_unsafe_action(game, a);
 
                                             // Clear square components
                                             ev_clear.send(ClearBoardEvent);
@@ -649,7 +657,7 @@ fn interaction_system(
 
 // Menu button is handled in generic menu handler.
 fn draw_button_system(
-    mut interaction_query: Query<
+    interaction_query: Query<
         &Interaction,
         (Changed<Interaction>, With<Button>, With<DrawNewTile>),
     >,
@@ -667,9 +675,8 @@ fn draw_button_system(
 // Clear select, actions etc.
 fn clear_board_effects(
     mut commands: Commands,
-    mut ev_clear: EventReader<ClearBoardEvent>,
-    mut ev_update: EventWriter<UpdateBoardEvent>,
-    mut things: Query<
+    _ev_clear: EventReader<ClearBoardEvent>,
+    things: Query<
         Entity,
         With<Cord>,
     >,
@@ -681,13 +688,11 @@ fn clear_board_effects(
 
         // To be extended
     }
-
-    ev_update.send(UpdateBoardEvent);
 }
 
 fn create_ui_tile(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    mut commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
     tile: &Tile,
     state: TileState
 ) -> Entity {
@@ -719,24 +724,24 @@ fn create_ui_tile(
     let mut tile_color = if tile.color == TileColor::Black {BLACK_TILE_COLOR} else {WHITE_TILE_COLOR};
 
     match state {
-        Selected => {
-
+        TileState::Selected => {
+            tile_color = SELECTED_TILE_COLOR;
         }
-        Attacked => {
-
+        TileState::Attacked => {
+            tile_color = ATTACKED_SQUARE_COLOR;
         }
-        Striked => {
-
+        TileState::Striked => {
+            tile_color = STRIKED_SQUARE_COLOR;
         }
-        Commanded => {
-
+        TileState::Commanded => {
+            tile_color = COMMANDED_SQUARE_COLOR;
         }
         _ => {}
     }
 
     // FIXME: Add tile icon
 
-    let ui_tile = Some(commands.spawn_bundle(NodeBundle{
+    let ui_tile = commands.spawn_bundle(NodeBundle{
         style: tile_style,
         color: tile_color.into(),
         ..default()
@@ -748,7 +753,48 @@ fn create_ui_tile(
         ));
     })
     .insert(GameTile)
-    .id());
+    .id();
 
     ui_tile
+}
+
+fn opponent_turn(
+    mut _ev_opponent_turn: EventReader<OpponentTurn>,
+    state: Res<State<AppState>>,
+    mut game_state: ResMut<Game>,
+    opponent: Query<Option<&Ai>, With<Opponent>>
+) {
+
+    let mut state = &mut game_state.0;
+
+    match state {
+        AppState::SingleplayerGame => {
+
+            let a = alpha_beta::get_action(opponent.single().unwrap(), state);
+
+            if a.is_none() {
+                // This means game over. But don't do anything now.
+                return Ok(());
+            }
+
+            let mut a = a.unwrap();
+
+            logic::do_unsafe_action(state, &a);
+
+            // New from bag action is 2 stage
+            match a {
+                Action::NewFromBag => {
+                    a = alpha_beta::get_action(agent, state).expect("AI is unable to deploy drawn tile.");
+                    logic::do_unsafe_action(state, &a);
+                }
+                _ => {}
+            }
+        }
+        AppState::MultiplayerGame => {
+            todo!();
+        }
+        _ => {
+            panic!("Illegal state.")
+        }
+    }
 }

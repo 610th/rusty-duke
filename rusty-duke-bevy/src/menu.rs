@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use crate::*;
 use bevy::app::AppExit;
+use rusty_duke_logic::logic::{self, TileColor};
+
 
 // Much of the code in this file is derived from the Bevy 0.7 game_menu example.
 const MIN_AI_LEVEL: u8 = 2;
@@ -34,12 +36,18 @@ struct OnMultiplayerMenuScreen;
 struct OnInGameMenuScreen;
 
 // Resources
-#[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug)]
 pub struct AiLevel(pub u8);
-#[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug)]
 pub struct GameTime(pub Duration);
-#[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug)]
 pub struct GameTimeIncrement(pub Duration);
+pub enum ColorSetting {
+    BLACK,
+    WHITE,
+    RANDOM
+}
+pub struct PlayerColor(pub ColorSetting);
 
 // Plugins
 pub struct MenuPlugin;
@@ -51,6 +59,7 @@ impl Plugin for MenuPlugin {
             .insert_resource(AiLevel(6))
             .insert_resource(GameTime(Duration::from_secs(15 * 60)))
             .insert_resource(GameTimeIncrement(Duration::from_secs(0)))
+            .insert_resource(PlayerColor(ColorSetting::BLACK))
 
             // Main menu
             .add_system_set(SystemSet::on_enter(AppState::MainMenu).with_system(setup_main_menu))
@@ -70,7 +79,8 @@ impl Plugin for MenuPlugin {
             .add_system_set(
                 SystemSet::on_update(AppState::SingleplayerMenu)
                     .with_system(menu_action)
-                    .with_system(button_system),
+                    .with_system(button_system)
+                    .with_system(setting_button::<PlayerColor>)
             )
             .add_system_set(
                 SystemSet::on_exit(AppState::SingleplayerMenu)
@@ -156,7 +166,7 @@ fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(MenuButtonAction::SingleplayerMenu)
                 .with_children(|parent| {
                     parent
-                        .spawn_bundle(TextBundle::from_section("Singleplayer", button_text_style));
+                        .spawn_bundle(TextBundle::from_section("Singleplayer", button_text_style.clone()));
                 });
             parent
                 .spawn_bundle(ButtonBundle {
@@ -166,17 +176,17 @@ fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 })
                 .insert(MenuButtonAction::MultiplayerMenu)
                 .with_children(|parent| {
-                    parent.spawn_bundle(TextBundle::from_section("Multiplayer", button_text_style));
+                    parent.spawn_bundle(TextBundle::from_section("Multiplayer", button_text_style.clone()));
                 });
             parent
                 .spawn_bundle(ButtonBundle {
-                    style: button_style,
+                    style: button_style.clone(),
                     color: NORMAL_BUTTON_COLOR.into(),
                     ..default()
                 })
                 .insert(MenuButtonAction::Quit)
                 .with_children(|parent| {
-                    parent.spawn_bundle(TextBundle::from_section("Quit", button_text_style));
+                    parent.spawn_bundle(TextBundle::from_section("Quit", button_text_style.clone()));
                 });
         });
 }
@@ -234,6 +244,59 @@ fn setup_singleplayer_menu(
         })
         .insert(OnSingleplayerMenuScreen)
         .with_children(|parent| {
+
+
+            // Player color
+            parent
+                .spawn_bundle(NodeBundle {
+                    style: Style {
+                        margin: UiRect::all(Val::Auto),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    color: Color::CRIMSON.into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+
+                    // Black
+                    parent.spawn_bundle(ButtonBundle {
+                        style: button_style.clone(),
+                        color: game::BLACK_TILE_COLOR.into(),
+                        ..default()
+                    })
+                    .insert(PlayerColor(ColorSetting::BLACK))
+                    .with_children(|parent| {
+                        parent
+                            .spawn_bundle(TextBundle::from_section("BLACK",
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: 80.0,
+                                color: game::BLACK_TILE_TEXT_COLOR.into(),
+                            }));
+                    });
+
+                    // White
+                    parent.spawn_bundle(ButtonBundle {
+                        style: button_style.clone(),
+                        color: game::WHITE_TILE_COLOR.into(),
+                        ..default()
+                    })
+                    .insert(PlayerColor(ColorSetting::WHITE))
+                    .with_children(|parent| {
+                        parent
+                            .spawn_bundle(TextBundle::from_section("WHITE",
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: 80.0,
+                                color: game::WHITE_TILE_TEXT_COLOR.into(),
+                            }));
+                    });
+                });
+
+
+
             // Set AI level
             parent
                 .spawn_bundle(NodeBundle {
@@ -282,7 +345,7 @@ fn setup_singleplayer_menu(
                         .with_children(|parent| {
                             parent
                                 .spawn_bundle(ButtonBundle {
-                                    style: button_style,
+                                    style: button_style.clone(),
                                     color: NORMAL_BUTTON_COLOR.into(),
                                     ..default()
                                 })
@@ -361,7 +424,7 @@ fn setup_singleplayer_menu(
                                 .with_children(|parent| {
                                     parent
                                         .spawn_bundle(ButtonBundle {
-                                            style: button_style,
+                                            style: button_style.clone(),
                                             color: NORMAL_BUTTON_COLOR.into(),
                                             ..default()
                                         })
@@ -377,7 +440,7 @@ fn setup_singleplayer_menu(
 
                                     parent
                                         .spawn_bundle(ButtonBundle {
-                                            style: button_style,
+                                            style: button_style.clone(),
                                             color: NORMAL_BUTTON_COLOR.into(),
                                             ..default()
                                         })
@@ -441,7 +504,7 @@ fn setup_singleplayer_menu(
                                         .with_children(|parent| {
                                             parent
                                                 .spawn_bundle(ButtonBundle {
-                                                    style: button_style,
+                                                    style: button_style.clone(),
                                                     color: NORMAL_BUTTON_COLOR.into(),
                                                     ..default()
                                                 })
@@ -449,13 +512,13 @@ fn setup_singleplayer_menu(
                                                 .with_children(|parent| {
                                                     parent.spawn_bundle(TextBundle::from_section(
                                                         "Up",
-                                                        button_text_style,
+                                                        button_text_style.clone(),
                                                     ));
                                                 });
 
                                             parent
                                                 .spawn_bundle(ButtonBundle {
-                                                    style: button_style,
+                                                    style: button_style.clone(),
                                                     color: NORMAL_BUTTON_COLOR.into(),
                                                     ..default()
                                                 })
@@ -463,7 +526,7 @@ fn setup_singleplayer_menu(
                                                 .with_children(|parent| {
                                                     parent.spawn_bundle(TextBundle::from_section(
                                                         "Down",
-                                                        button_text_style,
+                                                        button_text_style.clone(),
                                                     ));
                                                 });
                                         });
@@ -530,7 +593,7 @@ fn setup_in_game_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 })
                 .insert(MenuButtonAction::Play)
                 .with_children(|parent| {
-                    parent.spawn_bundle(TextBundle::from_section("Resume", button_text_style));
+                    parent.spawn_bundle(TextBundle::from_section("Resume", button_text_style.clone()));
                 });
             parent
                 .spawn_bundle(ButtonBundle {
@@ -542,7 +605,7 @@ fn setup_in_game_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .with_children(|parent| {
                     parent.spawn_bundle(TextBundle::from_section(
                         "Exit to Main Menu",
-                        button_text_style,
+                        button_text_style.clone(),
                     ));
                 });
             parent
@@ -553,7 +616,7 @@ fn setup_in_game_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 })
                 .insert(MenuButtonAction::Quit)
                 .with_children(|parent| {
-                    parent.spawn_bundle(TextBundle::from_section("Exit", button_text_style));
+                    parent.spawn_bundle(TextBundle::from_section("Exit", button_text_style.clone()));
                 });
         });
 }
@@ -570,6 +633,40 @@ fn button_system(
             Interaction::Clicked => PRESSED_BUTTON_COLOR.into(),
             Interaction::Hovered => HOVERED_PRESSED_BUTTON_COLOR.into(),
             Interaction::None => NORMAL_BUTTON_COLOR.into(),
+        }
+    }
+}
+
+fn player_color_button_system(
+    mut interaction_query: Query<
+        (&Interaction, &mut UiColor),
+        (Changed<Interaction>, With<Button>),
+    >,
+) {
+    for (interaction, mut color) in interaction_query.iter_mut() {
+        *color = match *interaction {
+            Interaction::Clicked => PRESSED_BUTTON_COLOR.into(),
+            Interaction::Hovered => HOVERED_PRESSED_BUTTON_COLOR.into(),
+            Interaction::None => NORMAL_BUTTON_COLOR.into(),
+        }
+    }
+}
+
+// This system updates the settings when a new value for a setting is selected, and marks
+// the button as the one currently selected
+fn setting_button<T: Component + PartialEq + Copy>(
+    interaction_query: Query<(&Interaction, &T, Entity), (Changed<Interaction>, With<Button>)>,
+    mut selected_query: Query<(Entity, &mut UiColor), With<SelectedOption>>,
+    mut commands: Commands,
+    mut setting: ResMut<T>,
+) {
+    for (interaction, button_setting, entity) in &interaction_query {
+        if *interaction == Interaction::Clicked && *setting != *button_setting {
+            let (previous_button, mut previous_color) = selected_query.single_mut();
+            *previous_color = NORMAL_BUTTON.into();
+            commands.entity(previous_button).remove::<SelectedOption>();
+            commands.entity(entity).insert(SelectedOption);
+            *setting = *button_setting;
         }
     }
 }
