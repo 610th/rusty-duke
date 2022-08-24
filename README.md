@@ -6,7 +6,7 @@ See the official game for rules. Currently, only supports the basic tile set (th
 
 The AI is decent, but feel free to contribute if you want more of a challenge. The heuristics are quite naive, so there should be some low-hanging fruits to pick.
 
-I started this project because I wanted to learn Rust and do some AI development. I also want to be able to play 'The Duke' online with friends.
+I mainly started this project because I wanted to learn Rust and ECS, while doing some AI and game development.
 
 ## Try it
 
